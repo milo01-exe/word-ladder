@@ -1,6 +1,28 @@
 const std = @import("std");
 
 pub fn main() !void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdin_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+    const stdout = &stdout_writer.interface;
+    const stdin = &stdin_reader.interface;
+
+    while (true) {
+        try stdout.print("> ", .{});
+        try stdout.flush();
+
+        const input = try stdin.takeDelimiterExclusive('\n');
+
+        if (std.mem.eql(u8, input, "end")) {
+            try stdout.print("Exiting…\n", .{});
+            break;
+        }
+
+        try stdout.print("You said: {s}\n", .{input});
+    }
+
+    try stdout.flush();
 }
 
 const words = blk: {
