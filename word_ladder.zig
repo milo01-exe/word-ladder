@@ -14,9 +14,7 @@ pub fn main() !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdin_buffer: [1024]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
     const stdout = &stdout_writer.interface;
-    const stdin = &stdin_reader.interface;
 
     const seed: u64 = @intCast(std.time.milliTimestamp());
     var pseudo_random_num_generator = std.Random.DefaultPrng.init(seed);
@@ -33,6 +31,10 @@ pub fn main() !void {
     try stdout.flush();
 
     while (true) {
+        // reinitialize reader in order to reset buffer for new reads
+        var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+        const stdin = &stdin_reader.interface;
+
         const last_word = ladder.getLast();
         try stdout.print("The ladder is {d} words long. The last word was {s}.\n", .{ladder.items.len, last_word});
 
