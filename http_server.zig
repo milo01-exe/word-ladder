@@ -1,4 +1,5 @@
 const std = @import("std");
+const Ladder = @import("word_ladder.zig");
 
 pub fn main() !void {
     const addr = std.net.Address.initIp4(
@@ -10,6 +11,10 @@ pub fn main() !void {
         .reuse_address = true,
     });
 
+    const seed: u64 = @intCast(std.time.milliTimestamp());
+    var pseudo_random_num_generator = std.Random.DefaultPrng.init(seed);
+    const random = pseudo_random_num_generator.random();
+
     serve: while (true) {
         const conn = tcp_server.accept() catch |err| {
             std.log.err("accept: {}", .{err});
@@ -17,13 +22,13 @@ pub fn main() !void {
         };
         defer conn.stream.close();
 
-        handleConnection(conn) catch |err| {
+        handleConnection(random, conn) catch |err| {
             std.log.err("handleConnection: {}", .{err});
         };
     }
 }
 
-fn handleConnection(conn: std.net.Server.Connection) !void {
+fn handleConnection(random: std.Random, conn: std.net.Server.Connection) !void {
     var conn_reader_buf: [1024]u8 = undefined;
     var conn_writer_buf: [1024]u8 = undefined;
     var conn_reader = conn.stream.reader(&conn_reader_buf);
@@ -35,25 +40,42 @@ fn handleConnection(conn: std.net.Server.Connection) !void {
     );
 
     var request = try http_server.receiveHead();
-    if (request.head.method != .POST) {
-        request.respond("", .{ .status = .bad_request }) catch {};
-        return error.BadRequest;
-    }
-
     errdefer request.respond("", .{
         .status = .internal_server_error
     }) catch {};
 
-    var reader_buf: [1024]u8 = undefined;
-    const reader = try request.readerExpectContinue(&reader_buf);
-    const text = try reader.takeDelimiterExclusive(0);
+    switch (request.head.method) {
+        .GET => {
+            if (std.mem.eql(u8, request.head.target, "/")) {
+                try request.respond(
+                    @embedFile("ladder.html"),
+                    .{ .extra_headers = &.{ .{ .name = "Content-Type", .value = "text/html" } } }
+                );
+            }
 
-    var body_writer_buf: [1024]u8 = undefined;
-    var body_writer = try request.respondStreaming(&body_writer_buf, .{});
-    const body = &body_writer.writer;
+            if (std.mem.eql(u8, request.head.target, "/first")) {
+                const words = Ladder.words;
+                const start_index = random.intRangeLessThan(usize, 0, words.len);
+                const start = words[start_index];
+                try request.respond(&start, .{});
+            }
+        },
+        .POST => {
+            if (std.mem.eql(u8, request.head.target, "/ladder")) {
+                var reader_buf: [1024]u8 = undefined;
+                const reader = try request.readerExpectContinue(&reader_buf);
+                const text = try reader.takeDelimiterExclusive(0);
 
-    try body.print("You said: {s}\n", .{text});
-    try body.flush();
-    
-    try body_writer.end();
+                Ladder.validateLadder(text) catch |err| {
+                    try request.respond(@errorName(err), .{ .status = .bad_request });
+                    return;
+                };
+
+                try request.respond("", .{});
+            } else {
+                try request.respond("", .{ .status = .not_found });
+            }
+        },
+        else => try request.respond("", .{ .status = .not_found })
+    }
 }

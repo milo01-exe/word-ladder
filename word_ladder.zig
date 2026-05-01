@@ -1,5 +1,9 @@
 const std = @import("std");
 
+const LadderError = error {
+    EmptyLadder,
+} || InvalidWordError;
+
 const InvalidWordError = error {
     BadLength,
     NotInWordList,
@@ -65,10 +69,26 @@ pub fn main() !void {
     try stdout.flush();
 }
 
-const words = blk: {
+pub const words = blk: {
     @setEvalBranchQuota(1_000_000);
     break :blk parseWordList(@embedFile("words.txt"));
 };
+
+
+pub fn validateLadder(ladder: []const u8) LadderError!void {
+    var word_iter = std.mem.tokenizeScalar(u8, ladder, '\n');
+    const first_word = word_iter.next() orelse {
+        return error.EmptyLadder;
+    };
+    if (first_word.len != 4) return error.BadLength;
+
+    var last_word: [4]u8 = @as(*const [4]u8, @ptrCast(first_word.ptr)).*;
+
+    // verify each word in the ladder validates against the last word in the ladder
+    while (word_iter.next()) |word| {
+        last_word = try validateWord(word, last_word);
+    }
+}
 
 fn validateWord(input: []const u8, last_word: [4]u8) InvalidWordError![4]u8 {
     if (input.len != 4) {
